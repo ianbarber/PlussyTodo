@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>{{if .IsComplete}}Todo Completed!{{else}}Todo Added{{end}}</title>
+		<style>
+			section#container {
+				margin: 1em auto 0px auto;
+				padding: 0.5em;
+				width: 500px;
+				border: 2px dotted #CECECE;
+				-webkit-border-radius: 5px;
+				-moz-border-radius: 5px;
+				border-radius: 5px;
+				min-height: 200px;
+				position: relative;
+			}
+			
+			img {
+				position: absolute;
+			}
+			
+			h1, p#name, p#desc {
+				margin-left: 280px;
+				width: 200px;
+			}
+			
+			p#name {
+				border-bottom: 1px dotted #CECECE;
+				margin-bottom: 10px;
+			}
+			
+			h1 {
+				font-family: Helvetica, Sans-Serif;
+				font-size: 1.5em;
+				background: #CECECE;
+				padding: 5px;
+			}
+		</style>
+	</head>
+	<body itemscope itemtype="http://schema.org/Thing">
+		<section id="container">
+      		<img itemprop="image" src="{{.Baseurl}}/{{.Imurl}}-{{if .IsComplete}}done{{else}}add{{end}}.jpg" alt="{{.Type}}" />
+			<h1>PlussyTodo Item {{if .IsComplete}}Completed!{{end}}</h1>
+		    <p id="name" itemprop="name">{{if .IsComplete}}{{.Done}}{{else}}{{.Pending}}{{end}}</p>
+		    <p id="desc" itemprop="description">{{.Entry}}</p>
+		</section>
+	</body>
+</html>
