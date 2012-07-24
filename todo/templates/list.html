@@ -1,0 +1,15 @@
+{{range .Lists}}
+<div class="todo-list" id="{{.Name}}-todo-list">
+	<div class="imhold"><img src="{{.Imurl}}.svg" alt="{{.Name}}" /></div>
+	<h2>{{.Title}}</h2>
+	<form class="add-to-do" id="{{.Name}}-add-to-do" data-itemname="{{.Name}}">
+		<input id="{{.Name}}-entry" placeholder="What's Next?" type="text" />
+		<input id="{{.Name}}-submit" type="submit" value="Add"/>
+	</form>
+	<ul id="{{.Name}}-todo-items">
+	{{range .Items}}
+		{{template "entry.html" .}}
+	{{end}}
+	</ul>
+</div>
+{{end}}

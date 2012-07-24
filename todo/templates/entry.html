@@ -1,0 +1,5 @@
+<li class="item {{if .IsComplete}}done{{end}}" id="{{.Key.Encode}}">
+	<span>{{.Entry}}</span> 
+	<a class="rem" data-itemid="{{.Key.Encode}}" data-itemtype="{{.Type}}" href="#">[X]</a>
+	<div class="clear"></div>
+</li>
