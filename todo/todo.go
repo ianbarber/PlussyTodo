@@ -21,6 +21,7 @@ import (
 	"appengine/datastore"
 	"appengine/memcache"
 	"fmt"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"strings"
@@ -79,10 +80,12 @@ func home(w http.ResponseWriter, r *http.Request) {
 		// Generate UUID
 		key := "1"; // TODO: Fix!
 		
+		enc := json.NewEncoder(file)
+		
 		// Store token in datastore
 		item := &memcache.Item{
 		    Key:   key,
-		    Value: []byte(token),
+		    Value: []byte(enc.Encode(token)),
 		}
 		
 		cookie.Value = key;
