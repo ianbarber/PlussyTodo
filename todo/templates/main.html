@@ -30,18 +30,16 @@
 		<h1>Sign In For Your Todos</h1>
 	</header>
 	<div id="container" role="main">
-		<div id="spinner">
-			<img src="https://ssl.gstatic.com/docs/documents/share/images/spinner-1.gif" alt="Please Wait" />
+		{{if .URL}}
+		<div id="signin">
+			<a href="{{.URL}}">Sign In</a>
 		</div>
-		<div id="signin" style="display: none;">
-			<g:plus action="connect" clientid="212575495446.apps.googleusercontent.com"
-				scope="https://www.googleapis.com/auth/plus.moments.write"
-		        callback="onSignInCallback"></g:plus>
-		</div>
+		{{else}}
 		<div id="todolist">
 			<div id="listcontainer">
 			</div>
 		</div>
+		{{end}}
 	</div>
 	<footer id="credits">
  		<p>“Worker” symbol by Bart Laugs, "Unicorn" by Andrew McKinley, "Home" and "Phone" by The Noun Project, from <a href="http://thenounproject.com/">The Noun Project</a> collection.</p>

@@ -21,25 +21,6 @@ var user;
 // Require the other modules
 require(["jquery", "gplusclient", "plusone"]);
 
-/* Load in from local storage once the Google API is ready */
-function gapiloaded() {
-	time = new Date();
-
-	// Check if we have localstorage, and make callback if so
-	item = localStorage.getItem(STORE_KEY);
-	if (item) {
-		item = JSON.parse(item);
-		if (time.getTime() - item.time < 3600 * 1000) {
-			onSignInCallback(item.auth);
-			return;
-		}
-	}
-
-	// If we need to sign in, show that
-	$('#spinner').hide();
-	$('#signin').show();
-}
-
 /* 	This function is triggered when we sign in with the G+ button, and so 
 	is the main entry point into our application. We need to check the 
 	auth result, then retrieve information about the user */

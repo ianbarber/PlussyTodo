@@ -1,1 +1,9 @@
 Playing around with the G+ History (http://developers.google.com/+/history)
+
+Install the plus client library, including moments, and the goauth2 library. 
+
+mkdir -p code.google.com/p
+hg clone http://code.google.com/p/google-api-go-client/ code.google.com/p/google-api-go-client
+hg clone https://code.google.com/p/goauth2/ code.google.com/p/goauth2
+
+

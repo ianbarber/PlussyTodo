@@ -19,11 +19,14 @@ package todo
 import (
 	"appengine"
 	"appengine/datastore"
+	"appengine/memcache"
 	"fmt"
 	"html/template"
 	"net/http"
 	"strings"
 	"time"
+	//"code.google.com/p/google-api-go-client/plus/v1moments"
+	"code.google.com/p/goauth2/oauth"
 )
 
 type TodoItem struct {
@@ -58,7 +61,40 @@ func init() {
 
 /* Render the main screen */
 func home(w http.ResponseWriter, r *http.Request) {
-	homeTemplate.Execute(w, nil)
+	cookie, err := r.Cookie(cookieName) 
+	item, err := memcache.Get(c, cookie); 
+	c := appengine.NewContext(r)
+	
+	// IF cookie, look up token 
+	if item != nil {
+		
+	}
+	else if r.FormValue("code") != "" {
+		t := &oauth.Transport{Config: config}
+		token, err := t.Exchange(r.FormValue("code"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		
+		// Generate UUID
+		key = 1; // TODO: Fix!
+		
+		// Store token in datastore
+		item := &memcache.Item{
+		    Key:   key,
+		    Value: []byte(token),
+		}
+		
+		// Set as session ID cookie
+		memcache.Add(c, item)
+		w.SetCookie(cookieName, key)
+		
+		//oauthClient := t.Client()
+	} else {
+		url := config.AuthCodeURL("");
+		homeTemplate.Execute(w, map[string]interface{}{"URL": url})
+	}
 }
 
 /* View or add to list */
@@ -260,8 +296,19 @@ func getdefaultlists() []TodoList {
  ** Templates
  **/
 
+var cookieName = "SESSIONID"
+
 var homeTemplate = template.Must(template.ParseFiles("todo/templates/main.html"))
 var itemTemplate = template.Must(template.ParseFiles("todo/templates/entry.html"))
 var plusTemplate = template.Must(template.ParseFiles("todo/templates/moment_plus.html"))
 var itemsTemplate = template.Must(template.ParseFiles("todo/templates/list.html"))
 var entryTemplate = template.Must(itemsTemplate.ParseFiles("todo/templates/entry.html"))
+
+var config = &oauth.Config{
+        ClientId:     "212575495446.apps.googleusercontent.com",
+        ClientSecret: "5AG6EYykbjUMb3vAHpS0asy4",
+        Scope:        "https://www.googleapis.com/auth/plus.me https://www.googleapis.com/auth/plus.moments.write", 
+        AuthURL:      "https://accounts.google.com/o/oauth2/auth",
+        TokenURL:     "https://accounts.google.com/o/oauth2/token",
+		RedirectURL:  "http://localhost:8080/",
+}
