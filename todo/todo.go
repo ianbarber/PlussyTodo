@@ -61,15 +61,14 @@ func init() {
 
 /* Render the main screen */
 func home(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(cookieName) 
-	item, err := memcache.Get(c, cookie); 
 	c := appengine.NewContext(r)
+	cookie, err := r.Cookie(cookieName) 
+	item, err := memcache.Get(c, cookie.String()); 
 	
 	// IF cookie, look up token 
 	if item != nil {
-		
-	}
-	else if r.FormValue("code") != "" {
+		_ = item
+	} else if r.FormValue("code") != "" {
 		t := &oauth.Transport{Config: config}
 		token, err := t.Exchange(r.FormValue("code"))
 		if err != nil {
@@ -78,7 +77,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 		}
 		
 		// Generate UUID
-		key = 1; // TODO: Fix!
+		key := "1"; // TODO: Fix!
 		
 		// Store token in datastore
 		item := &memcache.Item{
@@ -86,9 +85,12 @@ func home(w http.ResponseWriter, r *http.Request) {
 		    Value: []byte(token),
 		}
 		
+		cookie.Value = key;
+		cookie.Name = cookieName;
+		
 		// Set as session ID cookie
 		memcache.Add(c, item)
-		w.SetCookie(cookieName, key)
+		http.SetCookie(w, cookie)
 		
 		//oauthClient := t.Client()
 	} else {
