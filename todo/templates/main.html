@@ -20,14 +20,18 @@
 		  paths: {
 		    'jquery' : 'https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min',
 			'plusone' : 'https://apis.google.com/js/plusone',
-			'gplusclient' : 'https://apis.google.com/js/client.js?onload=gapiloaded&',
 		  }
-		});		
+		});
 	</script>
+	<style>
+	{{if .User.Id}}
+		h1 { background-image: url({{.User.Imurl}}); }
+	{{end}}
+	</style>
 </head>
 <body>
 	<header>
-		<h1>Sign In For Your Todos</h1>
+		<h1 {{if .User.Id}}class="signedin"{{end}}>{{if .User.Name}}{{.User.Name}}'s Todos{{else}}Sign In For Your Todos{{end}}</h1>
 	</header>
 	<div id="container" role="main">
 		{{if .URL}}
@@ -37,6 +41,7 @@
 		{{else}}
 		<div id="todolist">
 			<div id="listcontainer">
+				{{template "list.html" .}}
 			</div>
 		</div>
 		{{end}}

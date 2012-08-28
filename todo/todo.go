@@ -20,14 +20,18 @@ import (
 	"appengine"
 	"appengine/datastore"
 	"appengine/memcache"
+	"appengine/urlfetch"
 	"fmt"
+	"strings"
+	"time"
+	"crypto/md5"
 	"encoding/json"
 	"html/template"
 	"net/http"
-	"strings"
-	"time"
-	//"code.google.com/p/google-api-go-client/plus/v1moments"
+	plushistory "code.google.com/p/google-api-go-client/plus/v1moments"
+	"code.google.com/p/google-api-go-client/plus/v1"
 	"code.google.com/p/goauth2/oauth"
+	//"code.google.com/p/google-api-go-client/googleapi"
 )
 
 type TodoItem struct {
@@ -49,96 +53,143 @@ type TodoList struct {
 	Items   []TodoItem
 }
 
+type UserEntry struct {
+	Tok oauth.Token
+	Name string
+	Id string
+	Imurl string
+}
+
 /* Main entry function on app engine */
 func init() {
 	http.HandleFunc("/", home)
 	http.HandleFunc("/list", managelist)
 	http.HandleFunc("/list/", manageitem)
+	if !appengine.IsDevAppServer() {
+		config.RedirectURL = "http://plussytodo.appspot.com/"
+	}
 }
 
 /**
  ** Web Handler Functions
  **/
-
+ 
 /* Render the main screen */
 func home(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
-	cookie, err := r.Cookie(cookieName) 
-	item, err := memcache.Get(c, cookie.String()); 
+	var user UserEntry
+	var url string
+	var lists []TodoList = getdefaultlists()
 	
-	// IF cookie, look up token 
-	if item != nil {
-		_ = item
-	} else if r.FormValue("code") != "" {
-		t := &oauth.Transport{Config: config}
+	ctx := appengine.NewContext(r)
+	user = getuser(w, r, ctx)
+	
+	// If cookie, look up token 
+	if r.FormValue("code") != "" {
+		t := &oauth.Transport{
+				Config: config,
+				Transport: &urlfetch.Transport{Context: ctx},
+			}
 		token, err := t.Exchange(r.FormValue("code"))
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "OAuth Error: " + err.Error(), http.StatusInternalServerError)
 			return
 		}
 		
-		// Generate UUID
-		key := "1"; // TODO: Fix!
+		// Retrieve profile information
+		oauthClient := t.Client()
+		svc, err := plus.New(oauthClient)
+		profile, err := svc.People.Get("me").Do()
+		if err != nil {
+			http.Error(w, "Plus API Error: " + err.Error(), http.StatusInternalServerError)
+			return
+		}		
 		
-		enc := json.NewEncoder(file)
+		// Generate ID
+		h := md5.New()
+		h.Write([]byte(profile.Id + "blah"))
+		key := fmt.Sprintf("%x", h.Sum(nil))
+		
+		user = UserEntry{
+			Tok: *token,
+			Name: profile.DisplayName,
+			Imurl: profile.Image.Url,
+			Id: profile.Id,
+		}
+		
+		serialised, err := json.Marshal(user)
+		if err != nil {
+			http.Error(w, "JSON Error: " + err.Error(), http.StatusInternalServerError)
+			return
+		}
 		
 		// Store token in datastore
 		item := &memcache.Item{
 		    Key:   key,
-		    Value: []byte(enc.Encode(token)),
+		    Value: serialised,
 		}
 		
-		cookie.Value = key;
-		cookie.Name = cookieName;
+		err = memcache.Set(ctx, item)
+		if err != nil {
+			http.Error(w, "Memcache Error: " + err.Error(), http.StatusInternalServerError)
+			return
+		}
 		
 		// Set as session ID cookie
-		memcache.Add(c, item)
+		cookie := &http.Cookie{
+			Value: key,
+			Name: cookieName,
+		}
 		http.SetCookie(w, cookie)
-		
-		//oauthClient := t.Client()
+	} 
+	
+	if user.Id == "" {
+		url = config.AuthCodeURL("");
 	} else {
-		url := config.AuthCodeURL("");
-		homeTemplate.Execute(w, map[string]interface{}{"URL": url})
+		for i := range lists {
+			lists[i].getitems(ctx, user.Id)
+		}
 	}
+	
+	homeTemplate.Execute(w, map[string]interface{}{"URL": url, "User": user, "Lists": lists})
 }
 
 /* View or add to list */
 func managelist(w http.ResponseWriter, r *http.Request) {
-	context := appengine.NewContext(r)
+	ctx := appengine.NewContext(r)
+	user := getuser(w, r, ctx)
 
-	if r.Method == "POST" {
+	if r.Method == "POST" && user.Id != "" {
 		/* If we're POSTing, create a new item */
 		todo := TodoItem{
-			User:       r.FormValue("user"),
+			User:       user.Id,
 			Entry:      r.FormValue("entry"),
 			Date:       time.Now(),
 			Type:       r.FormValue("type"),
 			IsComplete: false,
 		}
 
-		url, err := todo.store(context)
+		url, err := todo.store(ctx)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		
+		// Push moment to history
+		pushmoment(ctx, user, url, "http://schemas.google.com/CreateActivity")
+		//ctx.Infof("Attempting to add moment : %v", url)
+		
 		http.Redirect(w, r, url, http.StatusFound)
 	} else {
-		/* If GETing, retrieve the list of user todos */
-		var lists []TodoList = getdefaultlists()
-		for i := range lists {
-			lists[i].getitems(context, r.FormValue("user"))
-		}
-
-		itemsTemplate.Execute(w, map[string]interface{}{"Lists": lists})
+		http.Error(w, "No resource to retrieve", http.StatusNotFound)
 	}
 }
 
 /* View or update specific todos */
 func manageitem(w http.ResponseWriter, r *http.Request) {
-	context := appengine.NewContext(r)
+	ctx := appengine.NewContext(r)
 
 	/* Retrieve the item we're working with */
-	itemp, err := getitem(context, r.URL.Path)
+	itemp, err := getitem(ctx, r.URL.Path)
 	item := *itemp
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -168,15 +219,23 @@ func manageitem(w http.ResponseWriter, r *http.Request) {
 
 	/* If we're POSTing to this, we're checking it off */
 	if r.Method == "POST" {
-		err = item.checkoff(context)
+		user := getuser(w, r, ctx)
+		if user.Id != item.User {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		err = item.checkoff(ctx)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		
+		// Push moment to history
+		pushmoment(ctx, user, fmt.Sprintf("%s%s", baseurl(), r.URL.Path), "http://schemas.google.com/AddActivity")
+		//ctx.Infof("Attempting to delete moment : %v", fmt.Sprintf("%s%s", baseurl(), r.URL.Path))
 	}
 
 	/* Otherwise, just render the item */
-	w.Header().Add("X-Item-Location", fmt.Sprintf("%s%s", baseurl(), r.URL.Path))
 	err = itemTemplate.Execute(w, item)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -250,6 +309,51 @@ func baseurl() string {
 	return "http://plussytodo.appspot.com"
 }
 
+/* Push a moment to the Google+ history of the authenticated user */
+func pushmoment(ctx appengine.Context, user UserEntry, url string, moment_type string) error {
+	t := &oauth.Transport{
+			Config: config,
+			Transport: &urlfetch.Transport{Context: ctx},
+		}
+	t.Token = &oauth.Token{AccessToken: user.Tok.AccessToken}
+
+	svc, err := plushistory.New(t.Client())
+
+	target := plushistory.ItemScope {
+		Url: url,
+	}
+
+	moment := plushistory.Moment {
+		Target: &target, 
+		Type: moment_type,
+	}
+	
+	_, err = svc.Moments.Insert("me", "vault", &moment).Do()
+	
+	/*mom, err := googleapi.WithoutDataWrapper.JSONReader(moment)
+	resp, err := svc.Moments.Insert("me", "vault", &moment).Debug(true).Do()
+	
+	ctx.Infof("%s %#v %#v", mom, resp, err);*/
+	
+	return err
+}
+
+/* Retrieve a user based on a cookie */
+func getuser(w http.ResponseWriter, r *http.Request, ctx appengine.Context) UserEntry {
+	var user UserEntry
+	
+	cookie, _ := r.Cookie(cookieName) 	
+	if cookie != nil {
+		item, _ := memcache.Get(ctx, cookie.Value); 
+		if item != nil {
+			// Unmarshal JSON
+			json.Unmarshal(item.Value, &user)
+		}
+	}
+	
+	return user
+}
+
 /* Given a URL path, retrieve the corresponding item */
 func getitem(context appengine.Context, url string) (*TodoItem, error) {
 	parts := strings.Split(strings.Replace(url, "/list/", "", 1), "/type/")
@@ -303,16 +407,17 @@ func getdefaultlists() []TodoList {
 
 var cookieName = "SESSIONID"
 
-var homeTemplate = template.Must(template.ParseFiles("todo/templates/main.html"))
 var itemTemplate = template.Must(template.ParseFiles("todo/templates/entry.html"))
 var plusTemplate = template.Must(template.ParseFiles("todo/templates/moment_plus.html"))
-var itemsTemplate = template.Must(template.ParseFiles("todo/templates/list.html"))
-var entryTemplate = template.Must(itemsTemplate.ParseFiles("todo/templates/entry.html"))
+
+var homeTemplate = template.Must(template.ParseFiles("todo/templates/main.html"))
+var itemsTemplate = template.Must(homeTemplate.ParseFiles("todo/templates/list.html"))
+var entryTemplate = template.Must(homeTemplate.ParseFiles("todo/templates/entry.html"))
 
 var config = &oauth.Config{
         ClientId:     "212575495446.apps.googleusercontent.com",
         ClientSecret: "5AG6EYykbjUMb3vAHpS0asy4",
-        Scope:        "https://www.googleapis.com/auth/plus.me https://www.googleapis.com/auth/plus.moments.write", 
+        Scope:        plus.PlusMeScope + " " + plushistory.PlusMomentsWriteScope, 
         AuthURL:      "https://accounts.google.com/o/oauth2/auth",
         TokenURL:     "https://accounts.google.com/o/oauth2/token",
 		RedirectURL:  "http://localhost:8080/",
